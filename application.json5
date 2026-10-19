@@ -11,10 +11,10 @@
   storage_host: "http://localhost:8000/admin/download?name=",
   //choose database (need add `rbdc-<database> = { version = "*" }` of Cargo.toml)
   //db_url: "sqlite://target/sqlite.db",
-  //db_url: "mysql://root:123456@localhost:3306/test",
+  db_url: "mysql://root:password@localhost:3306/abs_admin",
   //db_url: "postgres://postgres:123456@localhost:5432/postgres",
   //db_url: "mssql://SA:TestPass!123456@localhost:1433/test",
-  db_url: "sqlite://target/sqlite.db",
+//  db_url: "sqlite://target/sqlite.db",
   // database pool len
   db_pool_len: 32,
   //pool get timeout

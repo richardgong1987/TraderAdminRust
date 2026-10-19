@@ -18,7 +18,7 @@ cache_redis = ["redis"]
 rbs = { version = "4" }
 rbatis = { version = "4.9", features = [] }
 rbdc-sqlite = { version = "4.9" }
-#rbdc-mysql = { version = "4.9" }
+rbdc-mysql = { version = "4.9" }
 #rbdc-pg = { version = "4.9" }
 #rbdc-mssql = { version = "4.9" }
 
