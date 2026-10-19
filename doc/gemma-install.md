@@ -7,21 +7,85 @@ This guide sets up Google's **Gemma 4 26B A4B** model on the remote server and r
 - The model answers on `http://localhost:11434` on the server. That address is not reachable from the internet.
 - You can use it from your Mac through an SSH tunnel.
 
-Why this model: 26B A4B is a mixture-of-experts model. It has about 25B parameters in total, but only about
-4B of them are used for each token. Its quality is close to a large model, while it runs at roughly the
-speed of a small one. That matters on this server, which has no GPU (see [server-specs.md](server-specs.md)).
-The download is 16–19 GB, which fits in the server's 30 GB of RAM.
+For why this model was chosen for this server, see [The server, and why this model fits it](#the-server-and-why-this-model-fits-it).
 
 | Step | Where | Time |
 |---|---|---|
 | 1. Replace the OS | Alibaba Cloud console | ~10 min |
 | 2. Restore passwordless SSH | Mac | 1 min |
 | 3. Update the system | Server | ~5 min |
-| 4. Install Ollama | Server | ~2 min |
+| 4. Install Ollama | Server | ~20 min (1.4 GB download) |
 | 5. Configure Ollama | Server | 1 min |
-| 6. Download the model | Server | ~5–15 min |
+| 6. Download the model | Server | ~4.5 h at 10 Mbps (18.7 GB) |
 | 7. Test it | Server | 2 min |
 | 8. Use it from your Mac | Mac | 1 min |
+
+The download times are for this server's bandwidth, about 10 Mbps. See [Network](#network-bandwidth) for how to check it, and how to download faster.
+
+---
+
+## The server, and why this model fits it
+
+### Server configuration (checked 2026-10-20)
+
+| Part | This server | What it means for running an LLM |
+|---|---|---|
+| Instance | Alibaba Cloud `ecs.u2i-c1m2.4xlarge`, Hong Kong | |
+| CPU | Intel Xeon Platinum, 16 vCPU (8 physical cores × 2 threads), AVX-512 | The model runs on the CPU. AVX-512 speeds up the maths. Speed scales with the 8 physical cores, not the 16 vCPUs. |
+| GPU | None | No GPU speed-up. Training a model is not practical on this server. |
+| RAM | 30 GB, no swap | The model, its context and the OS must all fit. Going over gets the process killed; it does not just slow down. |
+| Disk | 295 GB NVMe, ~281 GB free | Room for several models of 5–20 GB each. |
+| Network | ~10 Mbps download (measured) | Large downloads are slow. An 18 GB model takes about 4 hours. |
+| OS | Ubuntu 26.04.1 LTS, kernel 7.0, glibc 2.43, Python 3.14 | Recent enough for Ollama and current Python ML tools. |
+
+[server-specs.md](server-specs.md) explains how to check each of these.
+
+### What decides which model fits
+
+Without a GPU, two things decide what works:
+
+1. **RAM sets the largest model you can run.** The model's weights load into RAM. Each request's context
+   (the "KV cache") needs more on top, and the OS and other programs need a few GB as well.
+2. **Memory speed sets how fast it answers.** To produce each token, the CPU reads every *active* weight
+   from RAM once. The fewer parameters a model uses per token, the faster it answers. The total parameter
+   count decides how much RAM the model needs, not how fast it is.
+
+### The Gemma 4 options on this server
+
+| Model (Ollama tag) | Download | Parameters used per token | Fits in 30 GB? | Verdict |
+|---|---|---|---|---|
+| `gemma4:e2b` | 4.6–7.5 GB | ~2.3B (effective) | Easily | Fast but weakest. Most of the RAM goes unused. |
+| `gemma4:e4b` | 6.6–9.5 GB | ~4.5B (effective) | Easily | Fast, but leaves ~20 GB of RAM unused that could buy quality. |
+| `gemma4:12b` | 7.7–8.0 GB | Not published | Easily | Mid-size. Much smaller than the server can handle. |
+| **`gemma4:26b` (26B A4B)** | **16–19 GB** | **3.8B of 25.2B (mixture of experts)** | **Yes, ~10 GB spare** | **Chosen** |
+| `gemma4:31b` | 19–20 GB | All 30.7B (dense) | Barely | Reads about 8× more weights per token than 26B A4B, so it would answer several times slower. |
+
+### Why 26B A4B makes the most of this server
+
+- **It uses the RAM.** It is the largest Gemma 4 model that still leaves about 10 GB for context, the OS,
+  and other services such as the abs_admin backend.
+- **It answers at small-model speed.** A mixture-of-experts model sends each token through only a few of
+  its "expert" sub-networks: 3.8B of its 25.2B parameters. Per token, the CPU reads about as much memory
+  as it would for E4B, while the model holds over five times as many parameters.
+- **The 31B gains little here and costs a lot.** It is dense, so every token reads all 30.7B parameters.
+  On a CPU that is several times slower, and it leaves almost no RAM to spare.
+- **AVX-512 and 8 cores** speed up reading the prompt. That part is limited by compute rather than memory,
+  so it helps when you send long inputs such as price history or news.
+
+What this server cannot do, whatever the model: **fine-tune it**, because that needs a GPU (rent one for
+training and bring the result back here), and serve many users at the same time.
+
+### Network bandwidth
+
+To measure the server's download speed (it downloads 50 MB and prints the speed in bytes per second):
+
+```sh
+curl -s -o /dev/null -w '%{speed_download}\n' 'https://speed.cloudflare.com/__down?bytes=50000000'
+```
+
+Keep the quotes around the URL. Without them, the request comes back with only 1 byte.
+Divide the result by 125,000 to get Mbps. On 2026-10-20 it printed `1285255`, which is about 10 Mbps. At about 10 Mbps, the model download takes hours. To make it faster, raise
+the instance's public bandwidth in the ECS console before Step 6, and lower it again after the download.
 
 ---
 
@@ -37,8 +101,9 @@ To check a server's glibc version:
 ldd --version | head -1
 ```
 
-The fix is to switch the system disk to **Ubuntu 24.04 LTS**. That is the most common OS for this kind of
-tooling, and it also comes with a modern Python, which the training work will need later.
+The fix is to switch the system disk to **Ubuntu 26.04 LTS**, which is what this server runs now. 24.04 LTS
+works too. Ubuntu is the most common OS for this kind of tooling, and it comes with a modern Python, which
+the training work will need later.
 
 ---
 
@@ -52,7 +117,7 @@ tooling, and it also comes with a modern Python, which the training work will ne
 2. Find the instance (`ecs.u2i-c1m2.4xlarge`) and **Stop** it. You can only replace the OS while the instance is stopped.
 3. Open the instance's menu and choose **Replace Operating System** (更换操作系统).
    The menu labels change from time to time. Look under "More" or "Instance & Image".
-4. Choose **Public Image**, then **Ubuntu 24.04 64-bit**.
+4. Choose **Public Image**, then **Ubuntu 26.04 64-bit**. 24.04 also works.
 5. Under login credentials, choose **Set Password** and set a root password.
    You need the password once, in Step 2. After that you log in with your key.
 6. Confirm, wait until the instance is **Running**, and continue.
@@ -86,6 +151,9 @@ apt install -y curl zstd
 ```
 
 The Ollama download is compressed with zstd. The installer stops if `zstd` is missing.
+
+After the upgrade, you may see a list of "outdated binaries" or "services to restart", or a purple dialog
+asking which services to restart. That is normal. Press Enter to accept the defaults.
 
 If the upgrade installed a new kernel, reboot, wait a minute, and log in again:
 
@@ -156,10 +224,28 @@ systemctl show ollama --property=Environment
 ## Step 6 — Download the model (on the server)
 
 ```sh
-ollama pull gemma4:26b
+nohup ollama pull gemma4:26b > /root/pull.log 2>&1 &
 ```
 
-This downloads 16–19 GB. If the download stops, run the same command again and it picks up where it stopped.
+This downloads 18.7 GB, which takes about 4.5 hours at this server's bandwidth. The download is several
+files, and the log shows one line per file:
+
+| File | Size | What it is |
+|---|---|---|
+| `model` | 17.1 GB | The language model itself |
+| `projector` | 1.2 GB | Image encoder, for questions about pictures, such as chart screenshots |
+| `draft` | 0.5 GB | A small helper model |
+| `template`, `license`, `params` | tiny | Prompt format and default settings | Running `ollama pull` directly would
+tie the download to your SSH session: if you close the terminal or your Mac sleeps, the download stops.
+`nohup ... &` runs it in the background so it keeps going after you log out.
+
+To watch progress (Ctrl+C stops the watching, not the download):
+
+```sh
+tail -f /root/pull.log
+```
+
+If the download fails, run the same command again and it picks up where it stopped.
 
 ```sh
 ollama list          # gemma4:26b should be listed

@@ -123,16 +123,19 @@ curl -s http://100.100.100.200/latest/meta-data/instance/instance-type; echo
 curl -s http://100.100.100.200/latest/meta-data/region-id; echo
 ```
 
-## Current server (checked 2026-10-19)
+## Current server (checked 2026-10-20)
 
 | | |
 |---|---|
 | Instance | `ecs.u2i-c1m2.4xlarge`, `cn-hongkong` |
 | CPU | Intel Xeon Platinum, 16 vCPU (8 cores × 2 threads), AVX-512 |
 | Memory | 30 GB, no swap |
-| Disk | 296 GB NVMe, 2.4 GB used |
+| Disk | 295 GB NVMe, 2.7 GB used |
 | GPU | None |
-| OS | CentOS 7, kernel 3.10, Python 3.6.8 |
+| Network | ~10 Mbps download |
+| OS | Ubuntu 26.04.1 LTS, kernel 7.0, glibc 2.43, Python 3.14.4 |
+
+The OS was changed from CentOS 7 on 2026-10-20, because Ollama needs glibc 2.28 or newer. See [gemma-install.md](gemma-install.md).
 
 Re-run the quick summary after any upgrade or OS change, and update this table.
 
@@ -145,8 +148,8 @@ Re-run the quick summary after any upgrade or OS change, and update this table.
 ├──────────┼───────────────────────────────────────────────────────────────────────────────────┤
 │ RAM      │ 30 GB, no swap                                                                    │
 ├──────────┼───────────────────────────────────────────────────────────────────────────────────┤
-│ Disk     │ 296 GB NVMe, 2.4 GB used                                                          │
+│ Disk     │ 295 GB NVMe, 2.7 GB used                                                          │
 ├──────────┼───────────────────────────────────────────────────────────────────────────────────┤
 │ GPU      │ None. The only display device is a virtual Cirrus Logic VGA adapter.              │
 ├──────────┼───────────────────────────────────────────────────────────────────────────────────┤
-│ OS       │ CentOS 7 (kernel 3.10), Python 3.6.8. Docker, conda and Ollama are not installed. │
+│ OS       │ Ubuntu 26.04.1 LTS (kernel 7.0), glibc 2.43, Python 3.14.4.                        │
