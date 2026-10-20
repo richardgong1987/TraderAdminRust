@@ -18,6 +18,7 @@ Everything about deployment lives in this `deploy/` folder:
 | `.env.example` | What `deploy/.env` holds: the secrets. `deploy.sh` creates `.env` on the first run. |
 | [server-specs.md](server-specs.md) | The server's hardware, and how to check it |
 | [gemma-install.md](gemma-install.md) | Installing Ollama and the Gemma model on the server, step by step |
+| [open-port-8000.md](open-port-8000.md) | How port 8000 was opened to the internet, and how to check any port |
 
 ---
 
@@ -34,15 +35,17 @@ model, create passwords, set up MySQL, build, restart. We want:
    never restart MySQL. A database restart drops connections and risks the data for no benefit.
 3. **No secrets in git.** The repo is public, and `application.json5` holds development defaults
    (`root:password`, JWT secret `abs_admin`). Production must not use them.
-4. **Nothing public by accident.** Ollama has no login, MySQL needs none from localhost, and the app has
-   no HTTPS yet. All three listen on the server's `127.0.0.1` only.
+4. **Only the app is public.** Ollama has no login and MySQL needs none from localhost, so both listen on
+   the server's `127.0.0.1` only. The app listens on port 8000 on every address, over plain HTTP, because
+   only its owner uses it ([open-port-8000.md](open-port-8000.md)).
 
 ## Approach
 
-**Three services, each with its own lifecycle. All of them listen on the server's `127.0.0.1` only.**
+**Three services, each with its own lifecycle. MySQL and Ollama listen on the server's `127.0.0.1` only;
+the app also listens on the public IP.**
 
 ```
-             the server's 127.0.0.1 (nothing listens on the public IP)
+             the server's 127.0.0.1 (only the app's :8000 is also on the public IP)
 
    :3306 ◄──────────────── :8000 ────────────────► :11434
    MySQL 9.7 (LTS)         app (abs_admin)         Ollama + gemma4:26b
@@ -72,8 +75,8 @@ container's port is published. A container on a normal Docker network could not 
 **How the app gets its settings.** `src/config/config.rs` still loads `application.json5`. When the
 environment variables `SERVER_URL`, `DB_URL` and `JWT_SECRET` are set, they replace the file's values at
 startup. Locally they are not set, so development works as before. `docker-compose.yml` sets
-`SERVER_URL=127.0.0.1:8000`, because the file's `0.0.0.0:8000` would listen on the public IP once the app
-shares the host's network, and builds `DB_URL` and `JWT_SECRET` from `.env`.
+`SERVER_URL=0.0.0.0:8000`, which makes the app reachable on the public IP because it shares the host's
+network, and builds `DB_URL` and `JWT_SECRET` from `.env`.
 
 **How the app waits for MySQL.** `deploy.sh` starts MySQL with `--wait`, which returns once MySQL reports
 healthy, and only then starts the app. If MySQL is down later, the app exits with an error at startup, and
@@ -93,7 +96,7 @@ minutes), because `Cargo.toml` turns on LTO for release builds.
 | Alternative | Why not |
 |---|---|
 | One Compose file with both services | `docker compose up -d --build` would leave an unchanged MySQL alone, but `docker compose down`, a common reflex when redeploying, would stop the database too. Separate projects make "the app cannot touch MySQL" true by construction. |
-| The app on a Docker network, reaching Ollama through `host.docker.internal` | Ollama would have to listen on an address besides `127.0.0.1`. It has no login, so a single firewall mistake would let anyone use it. With host networking, all three services stay on `127.0.0.1`. |
+| The app on a Docker network, reaching Ollama through `host.docker.internal` | Ollama would have to listen on an address besides `127.0.0.1`. It has no login, so a single firewall mistake would let anyone use it. With host networking, MySQL and Ollama stay on `127.0.0.1`. |
 | `deploy.sh` runs `git pull` itself | You pull, look at what changed, then deploy. The script deploys exactly what is checked out. |
 | MySQL installed directly on the server | Works, but this way the whole stack is described in the repo, pinned to a version, and moves to a new server unchanged. |
 | MySQL 26.x, the newest Innovation release | Since July 2026, MySQL numbers releases by date (26.7, 26.10, ...). Each Innovation release is supported only until the next one, so staying supported means upgrading the database every ~3 months, and upgrades can't be undone. **9.7 is the newest LTS.** It has every 9.x feature and gets fixes for years. Switch to Innovation only when a feature you need exists only there: change `mysql:9.7` to that version in `docker-compose.mysql.yml`. |
@@ -117,7 +120,9 @@ The MySQL image creates that user the first time it starts.
 |---|---|
 | **`.env` is lost or leaked** | It exists only on the server. Copy it to a password manager after the first deploy. MySQL only reads the passwords on its first start, so if `.env` is lost, new passwords would lock the app out. `deploy.sh` refuses to create a new `.env` when MySQL already has data. |
 | **Uploaded files can be downloaded without a login.** The admin UI shows uploads with `<img src>`, which cannot send a login token, so `/admin/download` has to stay public. | Fixed on 2026-10-20: download only serves files under `target/upload/`. Delete needs a login and only works on your own folder. Upload rejects names like `../../x`. Until downloads need a login, **don't upload private files** through `/admin/upload`. AI training images don't use it; they are stored in MySQL. The app also runs as a non-root user. |
-| The app shares the host's network | Anything on `127.0.0.1` is reachable from the app, which is the point: MySQL and Ollama. The app itself listens on `127.0.0.1:8000` only, through `SERVER_URL`. |
+| The app shares the host's network | Anything on `127.0.0.1` is reachable from the app, which is the point: MySQL and Ollama. |
+| **The app is public over plain HTTP** | Fine for personal use. Passwords and login tokens cross the internet unencrypted, so don't reuse an important password. Change the default admin password. To close it or add HTTPS, see [open-port-8000.md](open-port-8000.md). |
+| The security group appears to let every port in (2026-10-20) | MySQL and Ollama are protected only by listening on `127.0.0.1`. Never change them to `0.0.0.0`. See [open-port-8000.md](open-port-8000.md). |
 | Host networking works this way on Linux only | On Docker Desktop for Mac, `network_mode: host` is off by default, and when it's on, `127.0.0.1` means Docker's Linux VM, not the Mac. Develop locally with `cargo run`, not with this Compose file. |
 | The first deploy is slow | About 1 GB of images and crates at the server's ~10 Mbps (see [gemma-install.md](gemma-install.md#network-bandwidth)), plus compile time: roughly half an hour. The model takes hours more, in the background. Later deploys reuse the cache. |
 | `Cargo.lock` was gitignored, so the server would pick its own dependency versions | `Cargo.lock` is now committed, and the build uses `--locked`. |
@@ -171,7 +176,7 @@ Copy the values to a password manager. See Risks for why.
 ### 4. Change the admin password
 
 On first start, the app creates the admin account `00000000000` with password `123456`. Anyone who reads
-the source knows these. Open the admin page (see [Opening the admin page](#opening-the-admin-page-from-your-mac)),
+the source knows these. Open the admin page (see [Opening the admin page](#opening-the-admin-page)),
 log in, and change the password straight away.
 
 ## Deploying an update
@@ -184,16 +189,16 @@ bash deploy/deploy.sh
 
 That's all. MySQL is not touched, and steps 1 to 5 finish in seconds because everything is already there.
 
-## Opening the admin page from your Mac
+## Opening the admin page
 
-The app only listens on the server's `127.0.0.1`. Forward it over SSH:
+Open http://47.76.236.148:8000 in any browser.
+
+MySQL listens on the server's `127.0.0.1` only. To reach it with a desktop client, forward it over SSH:
 
 ```sh
-# On your Mac. Keep it running; Ctrl+C closes it.
-ssh -N -L 8000:127.0.0.1:8000 root@47.76.236.148
+# On your Mac. Keep it running; Ctrl+C closes it. Then connect the client to 127.0.0.1:3306.
+ssh -N -L 3306:127.0.0.1:3306 root@47.76.236.148
 ```
-
-Then open http://localhost:8000. To reach MySQL with a desktop client, forward `3306` the same way.
 
 ## Everyday commands
 
@@ -223,15 +228,3 @@ The app writes logs to files, not to `docker logs`. In release builds the app tu
 | `required variable MYSQL_PASSWORD is missing` | Running Compose by hand without `.env`. Run `deploy.sh` once, or create `.env` (step 4 of the table). |
 | `the --mount option requires BuildKit` | Install `docker-buildx`. |
 | Every AI test result is `ERROR` | The model is still downloading (`ollama list` doesn't show it yet), or Ollama is down (`systemctl status ollama`). |
-
-## Exposing the app publicly (not yet)
-
-The app listens only on `127.0.0.1:8000`. Before opening it to the internet:
-
-1. Change the admin password (step 4).
-2. Put a reverse proxy with HTTPS in front of it, such as Caddy or nginx, on the server. It forwards to
-   `127.0.0.1:8000`, so the app's settings don't change. Without HTTPS, passwords and login tokens cross
-   the internet in plain text.
-3. Open 443 in the security group.
-
-The file endpoints were fixed on 2026-10-20 (see Risks), so they no longer block this.

@@ -15,8 +15,9 @@ services:
     # login, so it must not listen anywhere a normal container network could reach it.
     network_mode: host
     environment:
-      # Localhost only: there is no HTTPS yet. See "Exposing the app publicly" in README.md.
-      SERVER_URL: 127.0.0.1:8000
+      # 0.0.0.0 = every address, so the app is reachable at http://<public IP>:8000. Plain HTTP:
+      # fine for personal use only. See open-port-8000.md.
+      SERVER_URL: 0.0.0.0:8000
       DB_URL: mysql://abs_admin:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@127.0.0.1:${MYSQL_HOST_PORT:-3306}/abs_admin
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
     volumes:

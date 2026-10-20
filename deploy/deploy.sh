@@ -151,8 +151,7 @@ print_next_steps() {
   fi
   cat <<EOF
 
-Open the admin page from your Mac. Keep this running, then open http://localhost:8000
-  ssh -N -L 8000:127.0.0.1:8000 root@<this server's public IP>
+Open the admin page: http://<this server's public IP>:8000
 First deploy only: log in as 00000000000 / 123456 and change the password straight away.
 
 Deploy an update:  cd $REPO_DIR && git pull && bash deploy/deploy.sh
