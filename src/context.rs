@@ -35,7 +35,10 @@ pub struct ServiceContext {
 impl ServiceContext {
     /// init database pool
     pub async fn init_database(&self) {
-        log::info!("[abs_admin] rbatis pool init ({})...", self.config.db_url);
+        log::info!(
+            "[abs_admin] rbatis pool init ({})...",
+            without_credentials(&self.config.db_url)
+        );
         //include auto choose driver struct by 'config.db_url'
         self.rb
             .link(include!("../target/driver.rs"), &self.config.db_url)
@@ -86,5 +89,36 @@ impl Default for ServiceContext {
             sys_auth_service: SysAuthService {},
             config,
         }
+    }
+}
+
+/// The database URL carries the password; keep it out of the logs.
+fn without_credentials(db_url: &str) -> String {
+    match (db_url.find("://"), db_url.rfind('@')) {
+        (Some(scheme_end), Some(at)) if at > scheme_end => {
+            format!("{}://***@{}", &db_url[..scheme_end], &db_url[at + 1..])
+        }
+        _ => db_url.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::without_credentials;
+
+    #[test]
+    fn hides_user_and_password_in_db_url() {
+        assert_eq!(
+            without_credentials("mysql://abs_admin:s3cret@abs_admin_mysql:3306/abs_admin"),
+            "mysql://***@abs_admin_mysql:3306/abs_admin"
+        );
+    }
+
+    #[test]
+    fn leaves_url_without_credentials_unchanged() {
+        assert_eq!(
+            without_credentials("sqlite://target/sqlite.db"),
+            "sqlite://target/sqlite.db"
+        );
     }
 }

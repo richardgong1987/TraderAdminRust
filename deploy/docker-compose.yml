@@ -1,0 +1,31 @@
+# abs_admin app. Deploy after `git pull`, from this deploy/ folder:  docker compose up -d --build
+# MySQL runs in its own project (docker-compose.mysql.yml) and must be started first.
+# See README.md in this folder.
+name: abs_admin
+
+services:
+  app:
+    build:
+      # The repo root: the build needs src/, Cargo.toml and dist/.
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: abs_admin:latest
+    restart: unless-stopped
+    environment:
+      DB_URL: mysql://abs_admin:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@abs_admin_mysql:3306/abs_admin
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+    ports:
+      # Localhost only until /admin/download and /admin/delete require a login (see the doc).
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - app_data:/app/target
+    networks:
+      - abs_admin_net
+
+volumes:
+  app_data:
+
+networks:
+  abs_admin_net:
+    name: abs_admin_net
+    external: true

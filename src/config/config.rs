@@ -40,12 +40,24 @@ impl Default for ApplicationConfig {
         //load config
         let mut result: ApplicationConfig =
             json5::from_str(&cfg_data).expect("load config file fail");
+        result.apply_env_overrides();
         result.init_infos();
         result
     }
 }
 
 impl ApplicationConfig {
+    /// application.json5 is committed with development defaults; deployments supply the real
+    /// secrets through the environment (see docker-compose.yml).
+    fn apply_env_overrides(&mut self) {
+        if let Ok(db_url) = std::env::var("DB_URL") {
+            self.db_url = db_url;
+        }
+        if let Ok(jwt_secret) = std::env::var("JWT_SECRET") {
+            self.jwt_secret = jwt_secret;
+        }
+    }
+
     pub fn get_error_info(&self, code: &str) -> String {
         match self.errors.get(code) {
             None => match self.errors.get("-1") {

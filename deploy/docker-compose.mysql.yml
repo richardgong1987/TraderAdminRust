@@ -1,0 +1,39 @@
+# MySQL for abs_admin, in its own Compose project so app deploys never restart it.
+# Start once, from this deploy/ folder:  docker compose -f docker-compose.mysql.yml up -d --wait
+# See README.md in this folder.
+name: abs_admin_db
+
+services:
+  mysql:
+    # 9.7 is the current LTS: all 9.x features, patch releases for years. The newer 26.x line is
+    # Innovation-only, and each release is supported only until the next one (see README.md).
+    image: mysql:9.7
+    container_name: abs_admin_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      # Created on first start only: the database and the app's user, limited to that database.
+      MYSQL_DATABASE: abs_admin
+      MYSQL_USER: abs_admin
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      # Localhost only: reach it from outside through an SSH tunnel.
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"
+    networks:
+      - abs_admin_net
+    healthcheck:
+      # TCP ping fails while the first-start initialisation runs, so "healthy" means ready for the app.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  mysql_data:
+
+networks:
+  abs_admin_net:
+    # Fixed name so the app project (docker-compose.yml) can join it.
+    name: abs_admin_net

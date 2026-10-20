@@ -1,0 +1,7 @@
+target
+.git
+.idea
+.claude
+.env
+ssh.sh
+*.log
