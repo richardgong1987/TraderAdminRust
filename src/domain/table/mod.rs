@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod rbac;
 pub mod sys_dict;
 pub mod sys_user;

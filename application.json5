@@ -57,6 +57,12 @@
   trash_recycle_days: 90,
   /// format datetime.you can choose any ['YYYY-MM-DD hh:mm:ss.000000', 'YYYY-MM-DD hh:mm:ss']
   datetime_format: "YYYY-MM-DD hh:mm:ss",
+  // Ollama, which runs Gemma for AI training and testing (see doc/ai-training.md). Env OLLAMA_URL overrides the url.
+  // Locally, forward the server's Ollama with: ssh -N -L 11434:localhost:11434 root@<server>
+  ollama_url: "http://127.0.0.1:11434",
+  ollama_model: "gemma4:26b",
+  // Context window in tokens for each request. Every example and image in a model version uses part of it.
+  ollama_num_ctx: 8192,
   // error map <code : error_msg>
   errors: {
     "-1":"未知错误",
@@ -81,7 +87,17 @@
     "password_error": "密码不正确",
     "vcode_error": "验证码不正确",
     "req_frequently": "操作过于频繁,请等待{}秒后重试",
-    "id_empty": "id不能为空"
+    "id_empty": "id不能为空",
+    "ai.example_empty": "请填写文字或粘贴图片",
+    "ai.choice_empty": "请填写标准答案",
+    "ai.too_many_images": "每个例子最多5张图片",
+    "ai.image_invalid": "只能粘贴图片",
+    "ai.example_not_found": "例子不存在",
+    "ai.version_not_found": "模型版本不存在",
+    "ai.run_not_found": "测试记录不存在",
+    "ai.test_running": "已有测试在运行，请等它结束",
+    "ai.no_test_examples": "请先添加测试例子",
+    "ai.not_training_example": "只能用训练例子训练"
   }
 }
 

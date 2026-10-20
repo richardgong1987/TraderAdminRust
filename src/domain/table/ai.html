@@ -1,0 +1,60 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "https://raw.githubusercontent.com/rbatis/rbatis/master/rbatis-codegen/mybatis-3-mapper.dtd">
+<mapper>
+
+<!-- AiExample select_page. The image count is a joined derived table, not a subquery in the column
+     list: the page count query is built by replacing everything before the first " from ". -->
+<select id="select_page">
+    `select e.*, ifnull(c.image_count, 0) as image_count from ai_example e`
+    ` left join (select example_id, count(1) as image_count from ai_example_image group by example_id) c`
+    ` on c.example_id = e.id`
+    ` where e.purpose = #{dto.purpose}`
+    <if test="do_count == false">
+        ` order by e.create_date desc`
+    </if>
+</select>
+
+<!-- AiExample select_choices -->
+<select id="select_choices">
+    `select distinct expected_choice from ai_example order by expected_choice`
+</select>
+
+<!-- AiModelVersion select_list -->
+<select id="select_list">
+    `select v.*, (select count(1) from ai_model_version_example x where x.version_id = v.id) as example_count`
+    ` from ai_model_version v order by v.create_date desc`
+</select>
+
+<!-- A run with its version name and the counts computed from its results.
+     Include it with an explicit closing tag, <include refid="..."></include>: the parser treats a
+     self-closing <include/> as an open tag and silently drops the SQL that follows it. -->
+<sql id="run_with_counts">
+    `select r.*, v.name as version_name,`
+    ` (select count(1) from ai_eval_result x where x.run_id = r.id) as done,`
+    ` (select count(1) from ai_eval_result x where x.run_id = r.id and x.outcome = 'CORRECT') as correct,`
+    ` (select count(1) from ai_eval_result x where x.run_id = r.id and x.outcome = 'ERROR') as errors`
+    ` from ai_eval_run r left join ai_model_version v on v.id = r.version_id`
+</sql>
+
+<!-- AiEvalRun select_recent -->
+<select id="select_recent">
+    <include refid="run_with_counts"></include>
+    ` order by r.create_date desc limit #{limit}`
+</select>
+
+<!-- AiEvalRun select_by_ids -->
+<select id="select_by_ids">
+    <include refid="run_with_counts"></include>
+    ` where r.id in (`
+    <foreach collection="ids" item="id" separator=",">
+        #{id}
+    </foreach>
+    `)`
+</select>
+
+<!-- AiEvalResult select_by_run -->
+<select id="select_by_run">
+    `select x.*, e.question_text from ai_eval_result x left join ai_example e on e.id = x.example_id`
+    ` where x.run_id = #{run_id} order by x.create_date`
+</select>
+
+</mapper>

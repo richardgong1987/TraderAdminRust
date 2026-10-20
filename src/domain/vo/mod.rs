@@ -1,9 +1,11 @@
+pub mod ai;
 pub mod jwt;
 pub mod rbac;
 pub mod sign_in;
 pub mod sys_dict;
 pub mod sys_user;
 
+pub use ai::*;
 pub use jwt::*;
 pub use sign_in::*;
 pub use sys_dict::*;

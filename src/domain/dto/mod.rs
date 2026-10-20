@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod auth;
 pub mod sign_in;
 pub mod sys_dict;
@@ -5,6 +6,7 @@ pub mod sys_user;
 
 pub mod rbac;
 
+pub use ai::*;
 pub use auth::*;
 pub use sign_in::*;
 pub use sys_dict::*;

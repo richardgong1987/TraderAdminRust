@@ -45,6 +45,7 @@ pub async fn sync_tables(rb: &RBatis) {
     let _ = RBatis::sync(&conn, rb, &table, "sys_dict").await;
 
     let _ = rbac::sync_tables(&conn, rb).await;
+    crate::domain::table::ai::sync_tables(&conn, rb).await;
 }
 
 pub async fn sync_tables_data(rb: &RBatis) {

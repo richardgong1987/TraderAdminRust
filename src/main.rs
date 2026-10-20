@@ -1,7 +1,7 @@
 ﻿use abs_admin::context::CONTEXT;
 use abs_admin::controller::{
-    file_controller, img_controller, rbac_permission_controller, rbac_role_controller,
-    rbac_user_controller, sys_auth_controller, sys_dict_controller,
+    ai_controller, file_controller, img_controller, rbac_permission_controller,
+    rbac_role_controller, rbac_user_controller, sys_auth_controller, sys_dict_controller,
 };
 use abs_admin::domain::table;
 use abs_admin::domain::vo::RespVO;
@@ -31,6 +31,12 @@ async fn main() -> std::io::Result<()> {
     CONTEXT.init_database().await;
     table::sync_tables(&CONTEXT.rb).await;
     table::sync_tables_data(&CONTEXT.rb).await;
+    if let Err(e) = CONTEXT.ai_eval_service.fail_interrupted_runs().await {
+        log::error!(
+            "[abs_admin] could not close interrupted AI test runs: {}",
+            e
+        );
+    }
     log::info!(
         "Serve: http://{}",
         CONTEXT.config.server_url.replace("0.0.0.0", "127.0.0.1")
@@ -89,6 +95,31 @@ async fn main() -> std::io::Result<()> {
         .route("/admin/sys_dict_update", post(sys_dict_controller::update))
         .route("/admin/sys_dict_remove", post(sys_dict_controller::remove))
         .route("/admin/sys_dict_page", post(sys_dict_controller::page))
+        .route("/admin/ai_example_page", post(ai_controller::example_page))
+        .route(
+            "/admin/ai_example_detail",
+            post(ai_controller::example_detail),
+        )
+        .route("/admin/ai_example_add", post(ai_controller::example_add))
+        .route(
+            "/admin/ai_example_update",
+            post(ai_controller::example_update),
+        )
+        .route(
+            "/admin/ai_example_remove",
+            post(ai_controller::example_remove),
+        )
+        .route("/admin/ai_choices", post(ai_controller::choices))
+        .route("/admin/ai_version_list", post(ai_controller::version_list))
+        .route("/admin/ai_version_add", post(ai_controller::version_add))
+        .route(
+            "/admin/ai_version_remove",
+            post(ai_controller::version_remove),
+        )
+        .route("/admin/ai_eval_start", post(ai_controller::eval_start))
+        .route("/admin/ai_eval_list", post(ai_controller::eval_list))
+        .route("/admin/ai_eval_detail", post(ai_controller::eval_detail))
+        .route("/admin/ai_eval_compare", post(ai_controller::eval_compare))
         .layer(axum::middleware::from_fn(
             abs_admin::middleware::auth_axum::auth,
         ));

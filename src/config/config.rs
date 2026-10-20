@@ -26,6 +26,9 @@ pub struct ApplicationConfig {
     pub login_fail_retry_wait_sec: u64,
     pub trash_recycle_days: u64,
     pub datetime_format: String,
+    pub ollama_url: String,
+    pub ollama_model: String,
+    pub ollama_num_ctx: u32,
     pub errors: HashMap<String, String>,
     #[serde(default)]
     pub error_infos: HashMap<String, String>,
@@ -55,6 +58,12 @@ impl ApplicationConfig {
         }
         if let Ok(jwt_secret) = std::env::var("JWT_SECRET") {
             self.jwt_secret = jwt_secret;
+        }
+        if let Ok(ollama_url) = std::env::var("OLLAMA_URL") {
+            self.ollama_url = ollama_url;
+        }
+        if let Ok(ollama_model) = std::env::var("OLLAMA_MODEL") {
+            self.ollama_model = ollama_model;
         }
     }
 

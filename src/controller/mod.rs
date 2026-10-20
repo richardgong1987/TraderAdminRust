@@ -3,6 +3,7 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+pub mod ai_controller;
 pub mod file_controller;
 pub mod img_controller;
 pub mod rbac_permission_controller;

@@ -1,5 +1,10 @@
+mod ai_eval_service;
+mod ai_example_service;
+mod ai_prompt;
+mod ai_version_service;
 mod cache;
 mod cache_service;
+mod ollama_client;
 mod rbac_permission_service;
 mod rbac_role_permission_service;
 mod rbac_role_service;
@@ -11,7 +16,11 @@ mod sys_dict_service;
 mod sys_sms_service;
 mod sys_user_service;
 
+pub use ai_eval_service::*;
+pub use ai_example_service::*;
+pub use ai_version_service::*;
 pub use cache_service::*;
+pub use ollama_client::OllamaClient;
 
 pub use cache::*;
 pub use rbac_permission_service::*;

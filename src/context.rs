@@ -1,7 +1,8 @@
 use crate::config::config::ApplicationConfig;
 use crate::service::{
-    CacheService, RbacPermissionService, RbacRolePermissionService, RbacRoleService,
-    RbacUserRoleService, StorageService, SysAuthService, SysDictService, SysUserService,
+    AiEvalService, AiExampleService, AiVersionService, CacheService, OllamaClient,
+    RbacPermissionService, RbacRolePermissionService, RbacRoleService, RbacUserRoleService,
+    StorageService, SysAuthService, SysDictService, SysUserService,
 };
 use rbatis::RBatis;
 use rbatis::intercept_log::LogInterceptor;
@@ -30,6 +31,10 @@ pub struct ServiceContext {
     pub rbac_user_role_service: RbacUserRoleService,
     pub sys_dict_service: SysDictService,
     pub sys_auth_service: SysAuthService,
+    pub ollama_client: OllamaClient,
+    pub ai_example_service: AiExampleService,
+    pub ai_version_service: AiVersionService,
+    pub ai_eval_service: AiEvalService,
 }
 
 impl ServiceContext {
@@ -87,6 +92,10 @@ impl Default for ServiceContext {
             rbac_user_role_service: RbacUserRoleService {},
             sys_dict_service: SysDictService {},
             sys_auth_service: SysAuthService {},
+            ollama_client: OllamaClient::new(&config.ollama_url),
+            ai_example_service: AiExampleService {},
+            ai_version_service: AiVersionService {},
+            ai_eval_service: AiEvalService::default(),
             config,
         }
     }
