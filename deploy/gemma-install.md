@@ -22,6 +22,9 @@ For why this model was chosen for this server, see [The server, and why this mod
 
 The download times are for this server's bandwidth, about 10 Mbps. See [Network](#network-bandwidth) for how to check it, and how to download faster.
 
+[`deploy.sh`](README.md) does Steps 4 to 6 for you, as part of deploying the app. This guide explains each
+step and how to do it by hand.
+
 ---
 
 ## The server, and why this model fits it

@@ -1,4 +1,4 @@
-# abs_admin app. Deploy after `git pull`, from this deploy/ folder:  docker compose up -d --build
+# abs_admin app. deploy.sh in this folder starts it; by hand, from this folder:  docker compose up -d --build
 # MySQL runs in its own project (docker-compose.mysql.yml) and must be started first.
 # See README.md in this folder.
 name: abs_admin
@@ -11,21 +11,16 @@ services:
       dockerfile: deploy/Dockerfile
     image: abs_admin:latest
     restart: unless-stopped
+    # The host's network, so the app reaches Ollama and MySQL on the host's 127.0.0.1. Ollama has no
+    # login, so it must not listen anywhere a normal container network could reach it.
+    network_mode: host
     environment:
-      DB_URL: mysql://abs_admin:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@abs_admin_mysql:3306/abs_admin
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
-    ports:
       # Localhost only: there is no HTTPS yet. See "Exposing the app publicly" in README.md.
-      - "127.0.0.1:8000:8000"
+      SERVER_URL: 127.0.0.1:8000
+      DB_URL: mysql://abs_admin:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@127.0.0.1:${MYSQL_HOST_PORT:-3306}/abs_admin
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
     volumes:
       - app_data:/app/target
-    networks:
-      - abs_admin_net
 
 volumes:
   app_data:
-
-networks:
-  abs_admin_net:
-    name: abs_admin_net
-    external: true

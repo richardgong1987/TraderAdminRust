@@ -53,17 +53,17 @@ impl ApplicationConfig {
     /// application.json5 is committed with development defaults; deployments supply the real
     /// secrets through the environment (see docker-compose.yml).
     fn apply_env_overrides(&mut self) {
-        if let Ok(db_url) = std::env::var("DB_URL") {
-            self.db_url = db_url;
-        }
-        if let Ok(jwt_secret) = std::env::var("JWT_SECRET") {
-            self.jwt_secret = jwt_secret;
-        }
-        if let Ok(ollama_url) = std::env::var("OLLAMA_URL") {
-            self.ollama_url = ollama_url;
-        }
-        if let Ok(ollama_model) = std::env::var("OLLAMA_MODEL") {
-            self.ollama_model = ollama_model;
+        let overridable = [
+            ("SERVER_URL", &mut self.server_url),
+            ("DB_URL", &mut self.db_url),
+            ("JWT_SECRET", &mut self.jwt_secret),
+            ("OLLAMA_URL", &mut self.ollama_url),
+            ("OLLAMA_MODEL", &mut self.ollama_model),
+        ];
+        for (name, field) in overridable {
+            if let Ok(value) = std::env::var(name) {
+                *field = value;
+            }
         }
     }
 
