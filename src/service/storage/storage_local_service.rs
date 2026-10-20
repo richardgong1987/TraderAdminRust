@@ -22,7 +22,7 @@ impl IStorageService for FileLocalService {
             tokio::fs::create_dir_all(&parent).await?;
         }
         let mut f = tokio::fs::File::create(&name).await?;
-        f.write(&data).await?;
+        f.write_all(&data).await?;
         f.flush().await?;
         Ok(name.to_str().unwrap_or_default().to_string())
     }

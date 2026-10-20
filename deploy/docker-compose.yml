@@ -15,7 +15,7 @@ services:
       DB_URL: mysql://abs_admin:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@abs_admin_mysql:3306/abs_admin
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
     ports:
-      # Localhost only until /admin/download and /admin/delete require a login (see the doc).
+      # Localhost only: there is no HTTPS yet. See "Exposing the app publicly" in README.md.
       - "127.0.0.1:8000:8000"
     volumes:
       - app_data:/app/target

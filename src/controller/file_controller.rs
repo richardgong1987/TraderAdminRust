@@ -1,11 +1,13 @@
 ﻿use crate::context::CONTEXT;
 use crate::domain::vo::RespVO;
 use crate::middleware::auth_axum::JwtAuth;
+use crate::service::{UPLOAD_ROOT, check_inside, user_upload_dir};
 use axum::body::Body;
 use axum::extract::Multipart;
 use axum::extract::Query;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
+use std::path::Path;
 
 ///上传，返回外网访问地址
 pub async fn upload(jwt_auth: JwtAuth, mut multipart: Multipart) -> impl IntoResponse {
@@ -27,12 +29,15 @@ pub async fn upload(jwt_auth: JwtAuth, mut multipart: Multipart) -> impl IntoRes
         Err(e) => return RespVO::from_error(format!("read bytes error: {}", e)),
     };
 
+    let user_dir = user_upload_dir(&jwt_auth.id);
+    let name = user_dir.join(&filename).to_string_lossy().to_string();
+    if let Err(e) = check_inside(&user_dir, &name) {
+        return RespVO::from_error(e.to_string());
+    }
+
     let path = CONTEXT
         .storage_service
-        .upload(
-            format!("target/upload/{}/{}", jwt_auth.id, filename),
-            data.to_vec(),
-        )
+        .upload(name, data.to_vec())
         .await
         .map(|v| format!("{}{}", CONTEXT.config.storage_host, v));
     RespVO::from_result(path)
@@ -43,15 +48,22 @@ pub struct QueryParams {
     pub name: String,
 }
 
-///删除文件
-pub async fn delete(Query(param): Query<QueryParams>) -> impl IntoResponse {
+/// Delete one of the caller's own uploads.
+pub async fn delete(jwt_auth: JwtAuth, Query(param): Query<QueryParams>) -> impl IntoResponse {
+    if let Err(e) = check_inside(&user_upload_dir(&jwt_auth.id), &param.name) {
+        return RespVO::from_error(e.to_string());
+    }
     let result = CONTEXT.storage_service.remove(param.name).await;
     RespVO::from_result(result)
 }
 
-///内网流量下载
+/// Download an uploaded file. No login: the admin UI shows uploads with `<img src>`, which cannot
+/// send the Authorization header. Only files under the upload folder are served.
 pub async fn download(Query(param): Query<QueryParams>) -> impl IntoResponse {
-    let data = CONTEXT.storage_service.download(param.name).await;
+    let data = match check_inside(Path::new(UPLOAD_ROOT), &param.name) {
+        Ok(()) => CONTEXT.storage_service.download(param.name).await,
+        Err(e) => Err(e),
+    };
     match data {
         Ok(data) => Response::new(Body::from(data)).into_response(),
         Err(e) => {

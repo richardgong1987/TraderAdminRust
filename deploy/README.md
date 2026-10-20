@@ -95,7 +95,7 @@ The MySQL image creates that user the first time it starts.
 
 | Risk | Mitigation |
 |---|---|
-| **`/admin/download` and `/admin/delete` take any file path and need no login.** Anyone who can reach port 8000 can read files such as `/proc/self/environ` (which holds the DB password and JWT secret) or delete files. | The app is published on `127.0.0.1:8000` only, so it is not reachable from the internet. Use an SSH tunnel. Fix those endpoints before exposing the app publicly (see Part 2). The app also runs as a non-root user, which limits what can be deleted. |
+| **Uploaded files can be downloaded without a login.** The admin UI shows uploads with `<img src>`, which cannot send a login token, so `/admin/download` has to stay public. | Fixed on 2026-10-20: download only serves files under `target/upload/`. Delete needs a login and only works on your own folder. Upload rejects names like `../../x`. Until downloads need a login, **don't upload private files** (for example training data) through `/admin/upload`. The app also runs as a non-root user. |
 | `.env` is lost or leaked | It exists only on the server. Keep a copy of the values in a password manager. |
 | The first build on the server is slow | About 1 GB of images and crates at the server's ~10 Mbps (see [gemma-install.md](gemma-install.md#network-bandwidth)), plus compile time. Later builds reuse the cache. |
 | `Cargo.lock` was gitignored, so the server would pick its own dependency versions | `Cargo.lock` is now committed, and the build uses `--locked`. |
@@ -217,6 +217,12 @@ The app writes logs to files, not to `docker logs`. In release builds the app tu
 
 ## Exposing the app publicly (not yet)
 
-Before opening port 8000 (or 80/443) in the security group, fix `/admin/download` and `/admin/delete`. They
-must require a login and only accept paths inside `target/upload/`. After that, change `127.0.0.1:8000:8000`
-in `docker-compose.yml` to `8000:8000`, ideally behind a reverse proxy with HTTPS.
+The app listens only on `127.0.0.1:8000`. Before opening it to the internet:
+
+1. Change the admin password (step 6).
+2. Put a reverse proxy with HTTPS in front of it, such as Caddy or nginx. Otherwise passwords and login
+   tokens cross the internet in plain text.
+3. Then change `127.0.0.1:8000:8000` in `docker-compose.yml`, or point the proxy at it, and open 443 in the
+   security group.
+
+The file endpoints were fixed on 2026-10-20 (see Risks), so they no longer block this.
