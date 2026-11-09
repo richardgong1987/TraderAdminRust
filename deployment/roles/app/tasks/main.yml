@@ -1,0 +1,6 @@
+# Two halves, so migrate-from-compose.yml can build first and stop the old app only after that.
+- name: Build the image
+  ansible.builtin.import_tasks: build.yml
+
+- name: Roll it out
+  ansible.builtin.import_tasks: deploy.yml

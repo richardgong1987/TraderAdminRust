@@ -1,0 +1,7 @@
+# The model to download: the one the app is set to use, so it is configured in one place.
+# regex_findall returns what the parentheses matched: the name inside the quotes.
+ollama_model: >-
+  {{ lookup('file', playbook_dir ~ '/../application.json5')
+     | regex_findall('ollama_model: *"([^"]+)"') | first }}
+
+ollama_pull_log: /root/ollama-pull.log

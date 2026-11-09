@@ -1,0 +1,86 @@
+# Installs k3s, a complete single-binary Kubernetes, and prepares it for abs_admin.
+
+# /opt/abs_admin/k8s holds the manifests every role applies, so you can read or re-apply them by hand.
+- name: Create the folders for the k3s config and the manifests
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/rancher/k3s
+    - /opt/abs_admin/k8s
+
+# Written before installing, so k3s's first start already uses it.
+- name: Write the k3s config
+  ansible.builtin.copy:
+    src: config.yaml
+    dest: /etc/rancher/k3s/config.yaml
+    mode: "0600"
+  notify: Restart k3s
+
+- name: Check which k3s is installed
+  ansible.builtin.command: k3s --version
+  register: k3s_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install k3s {{ k3s_version }}
+  when: k3s_version not in k3s_installed.stdout
+  block:
+    - name: Download the k3s installer
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /usr/local/bin/k3s-install.sh
+        mode: "0755"
+
+    # Installs the binary, kubectl/crictl/ctr links and the systemd service, without starting it.
+    # The handler (re)starts it once: on a first install that starts k3s, on an upgrade it swaps
+    # in the new binary.
+    - name: Run the k3s installer
+      ansible.builtin.command: /usr/local/bin/k3s-install.sh
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+        INSTALL_K3S_SKIP_START: "true"
+      changed_when: true
+      notify: Restart k3s
+
+# Runs the restart now if the config changed, instead of at the end of the play.
+- name: Apply a changed config
+  ansible.builtin.meta: flush_handlers
+
+- name: Start k3s, now and on every boot
+  ansible.builtin.systemd_service:
+    name: k3s
+    state: started
+    enabled: true
+
+# Right after a start, the API is not up yet and kubectl fails, so retry for up to two minutes.
+- name: Wait until the node is ready
+  ansible.builtin.command: k3s kubectl wait --for=condition=Ready node --all --timeout=10s
+  register: node_ready
+  until: node_ready.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+
+- name: Copy the cluster manifest to the server
+  ansible.builtin.copy:
+    src: cluster.yaml
+    dest: /opt/abs_admin/k8s/
+    mode: "0644"
+
+# kubectl diff exits 0 when the cluster already matches the file, 1 when it differs, 2+ on errors.
+# Applying only on 1 keeps Ansible's "changed" honest: some objects, such as StatefulSets, report
+# "configured" on every apply even when nothing changed.
+- name: Compare the cluster manifest with the cluster
+  ansible.builtin.command: k3s kubectl diff -f /opt/abs_admin/k8s/cluster.yaml
+  register: cluster_diff
+  changed_when: false
+  failed_when: cluster_diff.rc > 1
+  check_mode: false
+
+- name: Create the namespace and storage class
+  when: cluster_diff.rc == 1
+  ansible.builtin.command: k3s kubectl apply -f /opt/abs_admin/k8s/cluster.yaml
+  changed_when: true

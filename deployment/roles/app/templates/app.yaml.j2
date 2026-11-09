@@ -1,0 +1,75 @@
+# abs_admin. Written by roles/app on every deploy ({{ app_image }}); edit the template, not this file.
+#
+# Uploaded files (target/upload) and log files (target/logs). Created once and kept across deploys.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data
+  namespace: abs-admin
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path-retain
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: abs-admin
+spec:
+  replicas: 1
+  # Stop the old pod before starting the new one: both would need port 8000 on the same server.
+  # A few seconds of downtime per deploy.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: abs-admin
+  template:
+    metadata:
+      labels:
+        app: abs-admin
+    spec:
+      # The server's network, so 127.0.0.1 in the pod is the server's 127.0.0.1: the app reaches
+      # Ollama there (application.json5's default), and Ollama, which has no login, never has to
+      # listen anywhere else. It also puts the app on the server's port 8000.
+      hostNetwork: true
+      # A host-network pod would otherwise use the server's DNS and couldn't resolve mysql.abs-admin.
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: app
+          image: {{ app_image }}
+          # Built on this server (roles/app/tasks/build.yml); there is no registry to pull from.
+          imagePullPolicy: Never
+          # These replace application.json5's development values (src/config/config.rs).
+          env:
+            # Every address, so it is reachable at http://<public IP>:8000. Plain HTTP: fine for
+            # personal use only (docs/deployment/open-port-8000.md).
+            - name: SERVER_URL
+              value: 0.0.0.0:8000
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: mysql, key: password }
+            # $(MYSQL_PASSWORD) is filled in by Kubernetes from the variable above.
+            - name: DB_URL
+              value: mysql://abs_admin:$(MYSQL_PASSWORD)@mysql.abs-admin.svc.cluster.local:3306/abs_admin
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: app, key: jwt-secret }
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /admin/
+              port: 8000
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /app/target
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: app-data

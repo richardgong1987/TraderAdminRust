@@ -1,0 +1,110 @@
+# One-time move from the old Docker Compose deployment (the deploy/ folder, now removed) to k3s.
+# It sets up everything as site.yml does, and moves the data in between:
+#
+#   1. k3s, Ollama, MySQL in k3s                       the old app keeps serving
+#   2. build the app image                             the old app keeps serving
+#   3. stop the old app, dump its database,            downtime starts
+#      load the dump into k3s's MySQL, stop old MySQL
+#   4. start the app in k3s                            downtime ends
+#   5. copy the uploaded files over
+#
+# The old Docker volumes are kept, so the old stack can be started again: see "Rolling back to
+# Docker Compose" in docs/deployment/migrate-from-compose.md. Safe to run again: once the old
+# MySQL container is gone, step 3 is skipped.
+#
+#   cd deployment && ansible-playbook migrate-from-compose.yml
+- name: Move abs_admin from Docker Compose to k3s
+  hosts: all
+  vars:
+    old_app_project: abs_admin
+    old_mysql_project: abs_admin_db
+    old_mysql_container: abs_admin_mysql
+    old_uploads: /var/lib/docker/volumes/abs_admin_app_data/_data/upload
+    # Also the backup of the old database. Delete it once you trust the new setup.
+    dump_file: /root/abs_admin-before-k3s.sql
+  tasks:
+    - name: Set up k3s, Ollama and MySQL
+      ansible.builtin.include_role:
+        name: "{{ server_role }}"
+      loop: [k3s, ollama, mysql]
+      loop_control:
+        loop_var: server_role
+
+    # Minutes of compiling, done while the old app still serves.
+    - name: Build the app image
+      ansible.builtin.include_role:
+        name: app
+        tasks_from: build
+
+    - name: Look for the old MySQL container
+      ansible.builtin.command: docker ps -q --filter name=^{{ old_mysql_container }}$
+      register: old_mysql
+      changed_when: false
+
+    - name: Move the database
+      when: old_mysql.stdout != ""
+      block:
+        # Both MySQLs must be at rest during the move: no app writes to either of them.
+        - name: Stop the old app
+          ansible.builtin.command: docker compose -p {{ old_app_project }} down
+          changed_when: true
+
+        - name: Dump the old database
+          ansible.builtin.shell: >-
+            docker exec {{ old_mysql_container }} sh -c
+            'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers abs_admin'
+            > {{ dump_file }}
+          changed_when: true
+
+        # Loading a dump replaces every table it contains, so refuse if the new database has any.
+        - name: Count the tables in k3s's MySQL
+          ansible.builtin.command: >-
+            k3s kubectl -n abs-admin exec mysql-0 -- sh -c
+            'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = \"abs_admin\""'
+          register: new_tables
+          changed_when: false
+
+        - name: Refuse to overwrite data in k3s's MySQL
+          ansible.builtin.fail:
+            msg: >-
+              k3s's MySQL already has {{ new_tables.stdout }} tables in abs_admin. Nothing was loaded.
+              The old app is stopped: start it again with
+              docker compose -p {{ old_app_project }} start, or see docs/deployment/migrate-from-compose.md.
+          when: new_tables.stdout | trim != "0"
+
+        - name: Load the dump into k3s's MySQL
+          ansible.builtin.shell: >-
+            k3s kubectl -n abs-admin exec -i mysql-0 -- sh -c
+            'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" abs_admin'
+            < {{ dump_file }}
+          changed_when: true
+
+        # down, not down -v: the containers go, their volumes (the data) stay.
+        - name: Stop the old MySQL
+          ansible.builtin.command: docker compose -p {{ old_mysql_project }} down
+          changed_when: true
+
+    - name: Start the app in k3s
+      ansible.builtin.include_role:
+        name: app
+        tasks_from: deploy
+
+    - name: Check for old uploaded files
+      ansible.builtin.stat:
+        path: "{{ old_uploads }}"
+      register: old_uploads_dir
+
+    # The app's volume exists only now: k3s creates it when the first pod that uses it starts.
+    # rsync copies only what is missing, so a second run copies nothing.
+    - name: Copy the uploaded files into the app's volume
+      when: old_uploads_dir.stat.exists
+      ansible.builtin.shell: |
+        set -o pipefail
+        volume=$(k3s kubectl -n abs-admin get pvc app-data -o jsonpath='{.spec.volumeName}')
+        folder=$(k3s kubectl get pv "$volume" -o jsonpath='{.spec.hostPath.path}')
+        rsync -a --itemize-changes {{ old_uploads }}/ "$folder/upload/"
+      args:
+        executable: /bin/bash
+      register: uploads_copy
+      changed_when: uploads_copy.stdout != ""

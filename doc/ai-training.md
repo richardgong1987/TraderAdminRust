@@ -13,7 +13,7 @@ The user wants two pages:
 
 Constraints:
 
-- The server has no GPU, so Gemma's weights can't be fine-tuned there ([server-specs.md](../deploy/server-specs.md)).
+- The server has no GPU, so Gemma's weights can't be fine-tuned there ([server-specs.md](../docs/deployment/server-specs.md)).
 - Gemma runs on a CPU. One answer takes seconds to minutes, so a test can't run inside a single HTTP request.
 - "Did it improve?" has to be a number you can trust. A model is not tested on the same examples it learned
   from, or the score just measures memory.
@@ -206,5 +206,5 @@ Tested against MySQL 9.7.2 and real Gemma (`gemma4:e2b` locally; the server's `g
 | Slow on CPU: each answer re-reads every example | Ollama reuses the cached prompt prefix when only the final question changes. The worked examples come first for exactly this reason. Real speed will be measured on the server. |
 | Few-shot learning hits a ceiling | Expected. The training and test sets built here are exactly what fine-tuning needs later. |
 | Editing an example changes old versions | Shown in the UI. Scores stay valid through the snapshots. |
-| The Docker app can't reach Ollama, which listens on the host's `127.0.0.1` | Solved: the app container uses the host's network ([deploy/README.md](../deploy/README.md), Approach). Locally, use an SSH tunnel to the server's Ollama, or a local Ollama. |
-| MySQL-specific column types (`LONGTEXT`) | The app is MySQL-only now ([deploy/README.md](../deploy/README.md)). |
+| The app in its container can't reach Ollama, which listens on the host's `127.0.0.1` | Solved: the app's pod uses the host's network (`hostNetwork`, see [docs/deployment/README.md](../docs/deployment/README.md)). Locally, use an SSH tunnel to the server's Ollama, or a local Ollama. |
+| MySQL-specific column types (`LONGTEXT`) | The app is MySQL-only now ([docs/deployment/README.md](../docs/deployment/README.md)). |

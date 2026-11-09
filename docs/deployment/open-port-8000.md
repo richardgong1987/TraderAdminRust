@@ -77,7 +77,11 @@ Only gate ③ needed changing.
 
 ## What was changed
 
-One line in `deploy/docker-compose.yml`:
+> **Since 2026-11-09 the app runs in k3s** ([README.md](README.md)). The same setting is now `SERVER_URL`
+> in `deployment/roles/app/templates/app.yaml.j2`, and `hostNetwork: true` there plays the part of
+> `network_mode: host`. This section is the record of the change made under Docker Compose.
+
+One line in `deploy/docker-compose.yml` (the old Compose setup, since removed):
 
 ```diff
 -      SERVER_URL: 127.0.0.1:8000
@@ -135,9 +139,11 @@ networking, Docker ignores `ports:`. The listen address inside the app is the on
 
 - **Plain HTTP.** Your login password and token cross the internet unencrypted. That's acceptable for a
   personal tool. Change the default admin password `123456`, and don't reuse an important password.
-- **Only gate ③ protects MySQL and Ollama.** The security group appears to let every port in. MySQL
-  (3306) and Ollama (11434, no login at all) are safe only because they listen on `127.0.0.1`. Never
-  switch them to `0.0.0.0`. To add a second layer, set the security group to allow only 22 and 8000.
+- **Only gate ③ protects Ollama.** The security group appears to let every port in. Ollama (11434, no
+  login at all) is safe only because it listens on `127.0.0.1`. Never switch it to `0.0.0.0`. MySQL, since
+  the move to k3s, has no port on the server at all: only the app's pod reaches it. k3s itself listens on
+  6443 and 10250 on every address (both need a certificate). To add a second layer, set the security
+  group to allow only 22 and 8000.
 - **`http://47.76.236.148` without `:8000` still doesn't work.** Browsers use port 80 for `http://`.
   The app can't listen on 80 itself, because it runs as a normal user and Linux reserves ports below 1024
   for root. That would need a reverse proxy such as Caddy or nginx on port 80.
@@ -146,8 +152,8 @@ networking, Docker ignores `ports:`. The listen address inside the app is the on
 
 Either:
 
-- On the server: change the line back to `127.0.0.1:8000`, then run `docker compose up -d` in
-  `deploy/`. To use the app after that, tunnel over SSH:
+- In `deployment/roles/app/templates/app.yaml.j2`, change `SERVER_URL` to `127.0.0.1:8000`, then
+  `cd deployment && ansible-playbook site.yml --tags app`. To use the app after that, tunnel over SSH:
   `ssh -N -L 8000:127.0.0.1:8000 root@47.76.236.148`, then open http://localhost:8000.
 - Or, with no change on the server: add a security-group rule that denies inbound port 8000.
 

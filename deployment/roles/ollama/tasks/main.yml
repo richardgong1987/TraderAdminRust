@@ -1,0 +1,66 @@
+# Ollama runs the Gemma model as a normal systemd service on the server, not in k3s: the 18 GB
+# model is already on disk, and a container adds nothing on a CPU-only machine.
+# Each step by hand: docs/deployment/gemma-install.md, Steps 4 to 6.
+
+- name: Install the installer's dependencies
+  ansible.builtin.apt:
+    name: [curl, zstd]
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Install Ollama
+  ansible.builtin.shell: set -o pipefail && curl -fsSL https://ollama.com/install.sh | sh
+  args:
+    executable: /bin/bash
+    creates: /usr/local/bin/ollama
+
+- name: Create the folder for Ollama's service override
+  ansible.builtin.file:
+    path: /etc/systemd/system/ollama.service.d
+    state: directory
+    mode: "0755"
+
+- name: Set Ollama's context length and keep-alive
+  ansible.builtin.copy:
+    src: override.conf
+    dest: /etc/systemd/system/ollama.service.d/override.conf
+    mode: "0644"
+  notify: Restart Ollama
+
+- name: Apply a changed override
+  ansible.builtin.meta: flush_handlers
+
+- name: Start Ollama, now and on every boot
+  ansible.builtin.systemd_service:
+    name: ollama
+    state: started
+    enabled: true
+
+- name: Wait until Ollama answers
+  ansible.builtin.uri:
+    url: http://127.0.0.1:11434/api/version
+  register: ollama_version
+  until: ollama_version.status == 200
+  retries: 30
+  delay: 1
+
+- name: Check whether {{ ollama_model }} is downloaded
+  ansible.builtin.command: ollama show {{ ollama_model }}
+  register: model_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# Hours at this server's ~10 Mbps, so it runs in the background and the deploy goes on. Until it
+# finishes, AI test runs end in ERROR. A run that finds a download in progress leaves it alone.
+- name: Start downloading {{ ollama_model }} in the background
+  when: model_check.rc != 0
+  ansible.builtin.shell: |
+    pgrep -f "ollama pull {{ ollama_model }}" && exit 0
+    nohup ollama pull {{ ollama_model }} > {{ ollama_pull_log }} 2>&1 &
+  changed_when: true
+
+- name: Say where to follow the download
+  when: model_check.rc != 0
+  ansible.builtin.debug:
+    msg: "{{ ollama_model }} is downloading. Progress on the server: tail -f {{ ollama_pull_log }}"

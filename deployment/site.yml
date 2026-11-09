@@ -1,0 +1,16 @@
+# Brings the server to the state described in roles/. The first deploy and every update are the
+# same command; each step skips what is already done.
+#
+#   cd deployment
+#   ansible-playbook site.yml                      # everything
+#   ansible-playbook site.yml --tags app           # only build and roll out the app
+#   ansible-playbook site.yml -e app_version=<commit>   # deploy, or roll back to, one commit
+#
+# Walkthrough: docs/deployment/README.md
+- name: Deploy abs_admin on k3s
+  hosts: all
+  roles:
+    - { role: k3s, tags: k3s }
+    - { role: ollama, tags: ollama }
+    - { role: mysql, tags: mysql }
+    - { role: app, tags: app }

@@ -1,0 +1,69 @@
+# Runs the image that build.yml made. Expects app_image to be set.
+
+- name: Look for the app's JWT secret
+  ansible.builtin.command: k3s kubectl -n abs-admin get secret/app -o name
+  register: app_secret
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# Signs login tokens. A new one only logs everyone out, so unlike MySQL's passwords it needs no guard.
+- name: Create the JWT secret (first deploy only)
+  when: app_secret.rc != 0
+  ansible.builtin.command: k3s kubectl apply -f -
+  args:
+    stdin: |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: app
+        namespace: abs-admin
+      stringData:
+        jwt-secret: {{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=40) }}
+  no_log: true
+  changed_when: true
+
+- name: Write the app manifest for {{ app_image }}
+  ansible.builtin.template:
+    src: app.yaml.j2
+    dest: /opt/abs_admin/k8s/app.yaml
+    mode: "0644"
+
+# kubectl diff exits 0 when the cluster already matches the file, 1 when it differs, 2+ on errors.
+- name: Compare the app manifest with what is running
+  ansible.builtin.command: k3s kubectl diff -f /opt/abs_admin/k8s/app.yaml
+  register: app_diff
+  changed_when: false
+  failed_when: app_diff.rc > 1
+  check_mode: false
+
+- name: Roll out {{ app_image }}
+  block:
+    - name: Apply the app manifest
+      when: app_diff.rc == 1
+      ansible.builtin.command: k3s kubectl apply -f /opt/abs_admin/k8s/app.yaml
+      changed_when: true
+
+    # Returns once the new pod passes its readiness check, i.e. answers on port 8000. At once when
+    # nothing changed.
+    - name: Wait until the new version answers
+      ansible.builtin.command: k3s kubectl -n abs-admin rollout status deployment/app --timeout=5m
+      changed_when: false
+
+  rescue:
+    # The app logs to files once it is up; what reaches kubectl logs is mostly startup errors.
+    - name: Collect the app's state
+      ansible.builtin.shell: |
+        k3s kubectl -n abs-admin get pods -o wide
+        k3s kubectl -n abs-admin logs deployment/app --tail=30
+      register: app_state
+      changed_when: false
+      failed_when: false
+
+    - name: Stop with the app's state
+      ansible.builtin.fail:
+        msg: "{{ app_state.stdout_lines + app_state.stderr_lines }}"
+
+- name: Say where it runs
+  ansible.builtin.debug:
+    msg: "{{ app_image }} is running at http://{{ ansible_host }}:8000"

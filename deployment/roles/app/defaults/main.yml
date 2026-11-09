@@ -1,0 +1,6 @@
+# The server builds what is pushed to GitHub, not the files on your Mac: push before you deploy.
+app_repo: https://github.com/richardgong1987/TraderAdminRust.git
+# A branch, tag or commit. To roll back: ansible-playbook site.yml --tags app -e app_version=<commit>
+app_version: master
+# Ansible owns this checkout: any edits made in it on the server are discarded on the next deploy.
+app_src_dir: /opt/abs_admin/src

@@ -1,0 +1,80 @@
+# MySQL for abs_admin. Applied by roles/mysql on every deploy: when nothing here changed, Kubernetes
+# leaves the running MySQL alone, so deploying the app never restarts the database.
+#
+# "Headless" Service (clusterIP: None): the name mysql.abs-admin.svc.cluster.local resolves straight
+# to the MySQL pod. A StatefulSet needs one, and it is also how the app finds MySQL. There is no port
+# on the server itself; from your Mac, use kubectl port-forward (docs/deployment/README.md).
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: abs-admin
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+---
+# A StatefulSet, not a Deployment: each replica keeps its own volume (data-mysql-0) for life, and
+# the pod is never replaced by a second copy running against the same files.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: abs-admin
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          # 9.7 is the current LTS: patch releases for years. The 26.x Innovation line is supported
+          # only until its next release, and MySQL upgrades can't be undone.
+          image: mysql:9.7
+          env:
+            # The image reads these on its first start only, when the data folder is empty: it
+            # creates the database and the app's user, which has rights on that database only.
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: mysql, key: root-password }
+            - name: MYSQL_DATABASE
+              value: abs_admin
+            - name: MYSQL_USER
+              value: abs_admin
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: mysql, key: password }
+          ports:
+            - name: mysql
+              containerPort: 3306
+          # "Ready" = accepts TCP connections, which it doesn't during first-start initialisation.
+          # Until then the Service has no address, and the deploy waits. No liveness probe: one that
+          # fires during a slow crash recovery would kill MySQL halfway through.
+          readinessProbe:
+            exec:
+              command: [mysqladmin, ping, -h, 127.0.0.1, --silent]
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  # Creates the volume claim data-mysql-0 once. Kubernetes can't change this block later: to grow
+  # the disk, see Risks in docs/deployment/README.md.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path-retain
+        resources:
+          requests:
+            # local-path doesn't enforce sizes; the real limit is the server's free disk.
+            storage: 20Gi

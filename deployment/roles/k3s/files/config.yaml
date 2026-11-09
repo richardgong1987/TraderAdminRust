@@ -1,0 +1,16 @@
+# k3s settings, read when k3s starts. Managed by Ansible (deployment/roles/k3s): edit it there.
+# Reference: https://docs.k3s.io/cli/server
+
+# The admin kubeconfig (/etc/rancher/k3s/k3s.yaml) is readable by root only.
+write-kubeconfig-mode: "0600"
+
+disable:
+  # No Ingress controller: the app listens on port 8000 itself (hostNetwork, see roles/app).
+  - traefik
+  # No load balancer for the same reason. It would also take ports 80 and 443.
+  - servicelb
+
+# One server, so pods never talk across machines. The default backend, VXLAN, would open UDP port
+# 8472 on every address, with no login, and this server's security group lets everything in.
+# host-gw needs no port. Change this before adding a second node.
+flannel-backend: host-gw

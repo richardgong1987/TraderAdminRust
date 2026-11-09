@@ -1,0 +1,6 @@
+# The servers Ansible manages. Login is with your SSH key, the same as ssh.sh in the repo root.
+all:
+  hosts:
+    hk:
+      ansible_host: 47.76.236.148
+      ansible_user: root

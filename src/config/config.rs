@@ -51,7 +51,7 @@ impl Default for ApplicationConfig {
 
 impl ApplicationConfig {
     /// application.json5 is committed with development defaults; deployments supply the real
-    /// secrets through the environment (see docker-compose.yml).
+    /// secrets through the environment (see deployment/roles/app/templates/app.yaml.j2).
     fn apply_env_overrides(&mut self) {
         let overridable = [
             ("SERVER_URL", &mut self.server_url),

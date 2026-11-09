@@ -1,0 +1,61 @@
+# Runs MySQL in k3s. Its passwords are created once; the database is started once and then left alone.
+
+- name: Look for MySQL's data and passwords
+  ansible.builtin.command: k3s kubectl -n abs-admin get pvc/data-mysql-0 secret/mysql -o name
+  register: mysql_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# MySQL reads its passwords on its first start only. New passwords would lock the app out of the data.
+- name: Refuse to replace the passwords of an existing database
+  ansible.builtin.fail:
+    msg: >-
+      Secret mysql is missing, but MySQL already has data (volume claim data-mysql-0). Restore the
+      secret from your password manager instead: see Troubleshooting in docs/deployment/README.md.
+  when:
+    - "'persistentvolumeclaim/data-mysql-0' in mysql_state.stdout"
+    - "'secret/mysql' not in mysql_state.stdout"
+
+# Letters and digits only, because the password goes into the app's mysql:// URL. Sent on stdin,
+# so it never appears in a command line or in Ansible's output.
+- name: Create MySQL's passwords (first deploy only)
+  when: "'secret/mysql' not in mysql_state.stdout"
+  ansible.builtin.command: k3s kubectl apply -f -
+  args:
+    stdin: |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: mysql
+        namespace: abs-admin
+      stringData:
+        root-password: {{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=40) }}
+        password: {{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=40) }}
+  no_log: true
+  changed_when: true
+
+- name: Copy the MySQL manifest to the server
+  ansible.builtin.copy:
+    src: mysql.yaml
+    dest: /opt/abs_admin/k8s/
+    mode: "0644"
+
+# kubectl diff exits 0 when the cluster already matches the file, 1 when it differs, 2+ on errors.
+- name: Compare the MySQL manifest with what is running
+  ansible.builtin.command: k3s kubectl diff -f /opt/abs_admin/k8s/mysql.yaml
+  register: mysql_diff
+  changed_when: false
+  failed_when: mysql_diff.rc > 1
+  check_mode: false
+
+- name: Apply the MySQL manifest
+  when: mysql_diff.rc == 1
+  ansible.builtin.command: k3s kubectl apply -f /opt/abs_admin/k8s/mysql.yaml
+  changed_when: true
+
+# Returns at once when MySQL is already running. The first time it includes pulling the image and
+# MySQL's initialisation, a few minutes at this server's bandwidth.
+- name: Wait until MySQL is ready
+  ansible.builtin.command: k3s kubectl -n abs-admin rollout status statefulset/mysql --timeout=15m
+  changed_when: false

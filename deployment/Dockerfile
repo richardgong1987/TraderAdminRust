@@ -21,8 +21,8 @@ FROM debian:trixie-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libssl3t64 \
     && rm -rf /var/lib/apt/lists/*
-# Uploads and logs go to /app/target. The app_data volume is mounted there; a new volume takes its
-# owner from this directory, so the non-root user can write to it.
+# Uploads and logs go to /app/target. In k3s the app-data volume is mounted there (roles/app);
+# without a volume, the non-root user can still write to it.
 RUN useradd --system --uid 10001 app \
     && mkdir -p /app/target \
     && chown app /app/target

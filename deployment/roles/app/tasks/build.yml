@@ -1,0 +1,61 @@
+# Builds the app image on the server and hands it to k3s. There is no image registry: the server
+# builds from the GitHub checkout, so one image per commit, built once.
+
+# Docker only builds here. k3s runs the containers, with its own containerd.
+- name: Install Docker, to build the image
+  ansible.builtin.apt:
+    name: [docker.io, docker-buildx]
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Start Docker
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Get the code at {{ app_version }}
+  ansible.builtin.git:
+    repo: "{{ app_repo }}"
+    dest: "{{ app_src_dir }}"
+    version: "{{ app_version }}"
+    force: true
+  register: app_checkout
+
+# A new commit gets a new tag, and the changed tag is what makes Kubernetes replace the pod.
+# Deploying the same commit again changes nothing.
+- name: Name the image after the commit
+  ansible.builtin.set_fact:
+    app_image: "abs_admin:{{ app_checkout.after[:12] }}"
+
+- name: Check whether k3s already has {{ app_image }}
+  ansible.builtin.command: k3s crictl inspecti {{ app_image }}
+  register: image_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Build {{ app_image }} and load it into k3s
+  when: image_check.rc != 0
+  block:
+    # A release build with LTO takes minutes. async/poll: Ansible checks every 15 s instead of
+    # holding one silent SSH command open the whole time.
+    - name: Build {{ app_image }}
+      ansible.builtin.command: docker build -f deployment/Dockerfile -t {{ app_image }} .
+      args:
+        chdir: "{{ app_src_dir }}"
+      async: 3600
+      poll: 15
+      changed_when: true
+
+    # k3s keeps its images in its own containerd, apart from Docker's, so it can't see this image yet.
+    - name: Copy {{ app_image }} from Docker into k3s
+      ansible.builtin.shell: set -o pipefail && docker save {{ app_image }} | k3s ctr images import -
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    # Docker never cleans up tagged images itself. k3s removes unused ones when the disk fills up.
+    - name: Remove Docker's copy of {{ app_image }}
+      ansible.builtin.command: docker rmi {{ app_image }}
+      changed_when: true
