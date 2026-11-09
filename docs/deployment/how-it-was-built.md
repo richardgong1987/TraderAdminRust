@@ -711,6 +711,28 @@ mysql-0                1/1     Running   0          31m
 
 Everything is installed, so everything is skipped, and nothing was restarted.
 
+Then an ordinary update: the docs commit `7a7243d` was pushed and deployed with `--tags app --diff`.
+65 seconds. The diff showed exactly one change in the manifest:
+
+```diff
+-          image: abs_admin:5bd761ce61be
++          image: abs_admin:7a7243d6097d
+```
+
+The app pod was replaced; `mysql-0` kept its age. Both tags turned out to be the **same image**
+(`2cd18d417d7a0` in `k3s crictl images`): the commit changed only docs, so Docker's cache rebuilt
+identical layers. Then the rollback from the README, with a short commit hash:
+
+```text
+$ ansible-playbook site.yml --tags app -e app_version=5bd761c
+TASK [app : Build abs_admin:5bd761ce61be] ...... skipping     (k3s still has it)
+TASK [app : Apply the app manifest] ............ changed
+    msg: abs_admin:5bd761ce61be is running at http://47.76.236.148:8000
+hk : ok=12  changed=3  skipped=4                (41 s)
+```
+
+and forward again to `master` with `--tags app`.
+
 ---
 
 ## Part 3 — Practise
