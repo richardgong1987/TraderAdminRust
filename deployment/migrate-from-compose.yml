@@ -16,6 +16,8 @@
 - name: Move abs_admin from Docker Compose to k3s
   hosts: all
   vars:
+    # The old checkout: its Compose files are what starts the old stack again.
+    old_compose_dir: /home/TraderAdminRust/deploy
     old_app_project: abs_admin
     old_mysql_project: abs_admin_db
     old_mysql_container: abs_admin_mysql
@@ -70,7 +72,7 @@
             msg: >-
               k3s's MySQL already has {{ new_tables.stdout }} tables in abs_admin. Nothing was loaded.
               The old app is stopped: start it again with
-              docker compose -p {{ old_app_project }} start, or see docs/deployment/migrate-from-compose.md.
+              cd {{ old_compose_dir }} && docker compose up -d, or see docs/deployment/migrate-from-compose.md.
           when: new_tables.stdout | trim != "0"
 
         - name: Load the dump into k3s's MySQL

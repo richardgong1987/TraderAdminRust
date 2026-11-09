@@ -4,13 +4,13 @@
   ansible.builtin.command: k3s kubectl -n abs-admin get secret/app -o name
   register: app_secret
   changed_when: false
-  failed_when: false
+  failed_when: app_secret.rc != 0 and 'NotFound' not in app_secret.stderr
   check_mode: false
 
 # Signs login tokens. A new one only logs everyone out, so unlike MySQL's passwords it needs no guard.
 - name: Create the JWT secret (first deploy only)
   when: app_secret.rc != 0
-  ansible.builtin.command: k3s kubectl apply -f -
+  ansible.builtin.command: k3s kubectl create -f -
   args:
     stdin: |
       apiVersion: v1
